@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0a0b" />
+  <title>Guessify — Jogo + Cápsula Sonora</title>
+  <meta name="description" content="Jogo de adivinhar músicas com Spotify e Cápsula Sonora mensal via Last.fm." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <main class="shell">
+    <header class="topbar">
+      <button class="brand" id="brandButton" aria-label="Ir para início">
+        <span class="brand-mark">G</span>
+        <span>GUESSIFY</span>
+      </button>
+      <nav id="mainNav" class="main-nav hidden" aria-label="Navegação principal">
+        <button id="navPlay" class="nav-button active">Jogar</button>
+        <button id="navCapsule" class="nav-button">Cápsula Sonora</button>
+        <button id="navRanking" class="nav-button">Ranking</button>
+      </nav>
+      <div class="top-actions">
+        <div class="stat-pill"><span>🔥</span><strong id="streakValue">0</strong></div>
+        <div class="stat-pill"><span>⭐</span><strong id="scoreValue">0</strong></div>
+        <button id="logoutButton" class="ghost-button hidden">Sair</button>
+      </div>
+    </header>
+
+    <section id="landingView" class="view landing-view">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="pulse-dot"></span> O JOGO DA SUA PLAYLIST</div>
+        <h1>Você conhece mesmo<br><span>suas músicas?</span></h1>
+        <p>Ouça alguns segundos. Arrisque o nome. Descubra se seu ouvido merece o hype.</p>
+        <div class="hero-actions">
+          <button id="connectButton" class="primary-button spotify-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.58 14.42a.62.62 0 0 1-.86.2c-2.36-1.44-5.33-1.77-8.82-.97a.625.625 0 1 1-.28-1.22c3.82-.87 7.1-.5 9.76 1.12.3.18.39.57.2.87Zm1.23-2.73a.78.78 0 0 1-1.08.26c-2.7-1.66-6.82-2.14-10.02-1.17a.78.78 0 1 1-.45-1.5c3.66-1.1 8.2-.57 11.3 1.33.37.23.48.7.25 1.08Zm.1-2.84C14.67 8.93 9.33 8.75 6.24 9.7a.94.94 0 1 1-.55-1.8c3.55-1.08 9.46-.87 13.17 1.33a.94.94 0 0 1-.96 1.62Z"/></svg>
+            Conectar Spotify
+          </button>
+          <button id="demoButton" class="secondary-button">Ver interface</button>
+        </div>
+        <p class="fine-print">Para tocar músicas pelo navegador, a integração do Spotify exige Premium.</p>
+      </div>
+
+      <div class="hero-card-wrap">
+        <div class="hero-card">
+          <div class="mini-top"><span>RODADA 4/10</span><span>🔥 7</span></div>
+          <div class="vinyl">
+            <div class="vinyl-groove"></div>
+            <div class="vinyl-label">?</div>
+          </div>
+          <div class="mini-wave">
+            <i style="height:22%"></i><i style="height:54%"></i><i style="height:35%"></i><i style="height:80%"></i><i style="height:42%"></i><i style="height:68%"></i><i style="height:28%"></i><i style="height:88%"></i><i style="height:48%"></i><i style="height:60%"></i><i style="height:32%"></i><i style="height:74%"></i>
+          </div>
+          <div class="mini-timer">00:04</div>
+          <div class="mini-input">Digite o nome da música...</div>
+          <div class="mini-button">ENVIAR RESPOSTA</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="setupView" class="view hidden">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow">ESCOLHA O DESAFIO</div>
+          <h2>De onde vêm as músicas?</h2>
+        </div>
+        <div id="userChip" class="user-chip"></div>
+      </div>
+
+      <div class="source-grid">
+        <button id="likedSongsButton" class="source-card featured-source">
+          <div class="source-icon">♥</div>
+          <div>
+            <span class="source-kicker">BIBLIOTECA</span>
+            <h3>Músicas Curtidas</h3>
+            <p>Um mix aleatório do que você salvou.</p>
+          </div>
+          <span class="source-arrow">→</span>
+        </button>
+      </div>
+
+      <div class="playlist-heading">
+        <h3>Suas playlists</h3>
+        <span id="playlistStatus">Carregando...</span>
+      </div>
+      <div id="playlistGrid" class="playlist-grid"></div>
+    </section>
+
+
+    <section id="capsuleView" class="view capsule-view hidden">
+      <div class="section-heading capsule-heading">
+        <div>
+          <div class="eyebrow"><span class="pulse-dot"></span> ATUALIZA QUASE EM TEMPO REAL</div>
+          <h2>Cápsula Sonora</h2>
+          <p class="section-subtitle">Seu mês musical acompanhado pelo Last.fm enquanto você escuta Spotify normalmente.</p>
+        </div>
+        <button id="capsuleRefresh" class="secondary-button compact-button hidden">Atualizar agora</button>
+      </div>
+
+      <section id="capsuleConnect" class="capsule-connect-card">
+        <div class="capsule-connect-icon">◉</div>
+        <div class="capsule-connect-copy">
+          <span class="source-kicker">CONFIGURAÇÃO ÚNICA</span>
+          <h3>Conecte seu histórico do Last.fm</h3>
+          <p>Primeiro conecte Spotify ao Last.fm. Depois digite seu usuário do Last.fm aqui. A partir daí o Guessify consegue ler seus scrobbles mesmo quando este site está fechado.</p>
+          <div class="capsule-connect-actions">
+            <div class="lastfm-input-wrap">
+              <span>@</span><input id="lastfmUsername" autocomplete="off" placeholder="seu_usuario_lastfm" />
+            </div>
+            <button id="linkLastfmButton" class="primary-button">CONECTAR LAST.FM</button>
+          </div>
+          <a class="helper-link" href="https://www.last.fm/pt/about/trackmymusic?lang=pt" target="_blank" rel="noreferrer">Ainda não conectou Spotify ao Last.fm? Fazer isso agora ↗</a>
+          <p id="lastfmConfigHint" class="config-hint hidden"></p>
+        </div>
+      </section>
+
+      <div id="capsuleDashboard" class="hidden">
+        <div class="capsule-toolbar">
+          <div class="capsule-user">
+            <div id="capsuleAvatar" class="capsule-avatar">♪</div>
+            <div><strong id="capsuleUserName">—</strong><span id="capsuleUserHandle">—</span></div>
+          </div>
+          <div class="capsule-toolbar-actions">
+            <span id="capsuleUpdated" class="updated-label">—</span>
+            <button id="unlinkLastfmButton" class="ghost-button">Trocar Last.fm</button>
+          </div>
+        </div>
+
+        <div id="nowPlayingCard" class="now-playing-card">
+          <div class="live-dot"></div>
+          <div class="now-playing-cover" id="nowPlayingCover">♪</div>
+          <div class="now-playing-copy">
+            <span>TOCANDO AGORA</span>
+            <strong id="nowPlayingTitle">Nada tocando agora</strong>
+            <small id="nowPlayingArtist">Abra o Spotify e dê play</small>
+          </div>
+          <div class="live-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        </div>
+
+        <div class="capsule-hero-grid">
+          <article class="capsule-main-stat">
+            <span id="capsuleMonthLabel">ESTE MÊS</span>
+            <strong><em>≈</em><span id="capsuleMinutes">0</span></strong>
+            <h3>minutos estimados</h3>
+            <p>Calculados a partir dos scrobbles e da duração das faixas.</p>
+          </article>
+          <div class="capsule-mini-stats">
+            <article><span>🎵</span><strong id="capsuleScrobbles">0</strong><small>músicas registradas</small></article>
+            <article><span>💿</span><strong id="capsuleUniqueTracks">0</strong><small>músicas diferentes</small></article>
+            <article><span>🎤</span><strong id="capsuleUniqueArtists">0</strong><small>artistas diferentes</small></article>
+            <article><span>📅</span><strong id="capsuleDays">0</strong><small>dias ouvindo</small></article>
+          </div>
+        </div>
+
+        <div class="capsule-lists">
+          <section class="capsule-list-card">
+            <div class="list-card-heading"><div><span>TOP 5</span><h3>Músicas do mês</h3></div><span class="rank-symbol">♫</span></div>
+            <div id="topTracksList" class="capsule-list"></div>
+          </section>
+          <section class="capsule-list-card">
+            <div class="list-card-heading"><div><span>TOP 5</span><h3>Artistas do mês</h3></div><span class="rank-symbol">★</span></div>
+            <div id="topArtistsList" class="capsule-list"></div>
+          </section>
+        </div>
+
+        <p class="capsule-disclaimer">Os minutos são uma <strong>estimativa</strong> baseada nos scrobbles do Last.fm e nas durações conhecidas das faixas; não são minutos oficiais fornecidos pelo Spotify.</p>
+      </div>
+    </section>
+
+    <section id="rankingView" class="view ranking-view hidden">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow">🏆 COMUNIDADE GUESSIFY</div>
+          <h2>Ranking mensal</h2>
+          <p class="section-subtitle">Quem mais ouviu música entre as pessoas conectadas a este Guessify.</p>
+        </div>
+        <button id="rankingRefresh" class="secondary-button compact-button">Atualizar ranking</button>
+      </div>
+      <div class="ranking-summary">
+        <div><span>MÊS</span><strong id="rankingMonth">—</strong></div>
+        <div><span>PESSOAS</span><strong id="rankingPeople">0</strong></div>
+        <div><span>ATUALIZAÇÃO</span><strong id="rankingUpdated">—</strong></div>
+      </div>
+      <div id="rankingLoading" class="ranking-loading">Atualizando as cápsulas do grupo…</div>
+      <div id="rankingList" class="ranking-list hidden"></div>
+      <div id="rankingEmpty" class="empty-state hidden">
+        <div>🏁</div><h3>Ainda não tem ninguém no ranking.</h3><p>Conecte uma conta Last.fm na Cápsula Sonora para aparecer aqui.</p>
+      </div>
+      <p class="capsule-disclaimer">O ranking usa <strong>minutos estimados</strong> a partir dos scrobbles. Em grupos pequenos ele atualiza quase em tempo real quando alguém abre ou atualiza o ranking.</p>
+    </section>
+
+    <section id="gameView" class="view game-view hidden">
+      <div class="game-header">
+        <div>
+          <div class="eyebrow" id="sourceLabel">MÚSICAS CURTIDAS</div>
+          <h2>Adivinhe a música</h2>
+        </div>
+        <div class="round-badge">RODADA <strong id="roundValue">1</strong>/<span id="roundTotal">10</span></div>
+      </div>
+
+      <div class="game-layout">
+        <section class="player-card">
+          <div id="coverShell" class="cover-shell">
+            <div class="mystery-cover">
+              <div class="mystery-orbit"></div>
+              <span>?</span>
+            </div>
+            <img id="revealCover" class="reveal-cover hidden" alt="Capa do álbum" />
+          </div>
+
+          <div id="revealMeta" class="reveal-meta hidden">
+            <span id="resultBadge" class="result-badge">ACERTOU</span>
+            <h3 id="revealTitle"></h3>
+            <p id="revealArtist"></p>
+            <a id="spotifyLink" target="_blank" rel="noreferrer">Abrir no Spotify ↗</a>
+          </div>
+
+          <div id="playArea" class="play-area">
+            <button id="playButton" class="play-button" aria-label="Tocar trecho">
+              <svg id="playIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <div class="waveform" id="waveform" aria-hidden="true"></div>
+            <div class="clip-time"><span id="clipCurrent">0:00</span><span id="clipLimit">0:01</span></div>
+          </div>
+
+          <div class="stages" id="stages"></div>
+        </section>
+
+        <section class="answer-card">
+          <div class="answer-label-row"><div class="answer-label">QUAL É A MÚSICA?</div><span id="answerScope">SÓ DESTA SELEÇÃO</span></div>
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+            <input id="answerInput" autocomplete="off" placeholder="Digite música ou artista..." />
+            <button id="clearAnswer" class="clear-answer hidden" aria-label="Limpar resposta">×</button>
+          </div>
+          <div id="suggestions" class="suggestions hidden"></div>
+
+          <button id="submitAnswer" class="primary-button answer-submit" disabled>ENVIAR RESPOSTA</button>
+          <button id="skipButton" class="skip-button">PULAR + LIBERAR MAIS TEMPO</button>
+
+          <div class="attempts" id="attempts"></div>
+          <div class="points-preview">Vale até <strong id="pointsPreview">1000</strong> pontos</div>
+        </section>
+      </div>
+
+      <section id="roundFooter" class="round-footer hidden">
+        <div>
+          <span id="roundMessage">Boa!</span>
+          <strong>+<span id="roundPoints">0</span> pontos</strong>
+        </div>
+        <button id="nextButton" class="primary-button">PRÓXIMA MÚSICA →</button>
+      </section>
+    </section>
+
+    <section id="finishView" class="view finish-view hidden">
+      <div class="finish-card">
+        <div class="finish-emoji">🏆</div>
+        <div class="eyebrow">PARTIDA ENCERRADA</div>
+        <h2>Seu ouvido entregou tudo.</h2>
+        <div class="finish-score"><span id="finishScore">0</span><small>pontos</small></div>
+        <div class="finish-stats">
+          <div><strong id="finishHits">0</strong><span>acertos</span></div>
+          <div><strong id="finishBestStreak">0</strong><span>melhor sequência</span></div>
+          <div><strong id="finishAccuracy">0%</strong><span>precisão</span></div>
+        </div>
+        <div class="finish-actions">
+          <button id="playAgainButton" class="primary-button">JOGAR DE NOVO</button>
+          <button id="changeSourceButton" class="secondary-button">Trocar playlist</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://sdk.scdn.co/spotify-player.js"></script>
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
