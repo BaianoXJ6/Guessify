@@ -11,6 +11,10 @@ const LASTFM_ROOT =
   'https://ws.audioscrobbler.com/2.0/';
 
 
+const ITUNES_SEARCH_ROOT =
+  'https://itunes.apple.com/search';
+
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -107,6 +111,10 @@ const capsuleCache =
 
 
 const durationCache =
+  new Map();
+
+
+const publicTrackCache =
   new Map();
 
 
@@ -930,6 +938,618 @@ function chunkArray(
 
 
 /* =========================================================
+   MODO PÚBLICO — RESOLVE LISTA EM PRÉVIAS
+========================================================= */
+
+function normalizePublicSearch(
+  value
+) {
+  return String(
+    value ||
+    ''
+  )
+    .normalize(
+      'NFD'
+    )
+    .replace(
+      /[\u0300-\u036f]/g,
+      ''
+    )
+    .toLowerCase()
+    .replace(
+      /[^a-z0-9]+/g,
+      ' '
+    )
+    .trim();
+}
+
+
+function parsePublicTrackLine(
+  rawLine
+) {
+  const line =
+    cleanName(
+      String(
+        rawLine ||
+        ''
+      )
+        .replace(
+          /^\s*\d+[\s.)-]+/,
+          ''
+        )
+    );
+
+
+  if (!line) {
+    return null;
+  }
+
+
+  const separators = [
+    ' | ',
+    ' — ',
+    ' – ',
+    ' - '
+  ];
+
+
+  for (
+    const separator
+    of separators
+  ) {
+    const index =
+      line.indexOf(
+        separator
+      );
+
+
+    if (
+      index >
+      0
+    ) {
+      const name =
+        cleanName(
+          line.slice(
+            0,
+            index
+          )
+        );
+
+
+      const artist =
+        cleanName(
+          line.slice(
+            index +
+            separator.length
+          )
+        );
+
+
+      if (
+        name &&
+        artist
+      ) {
+        return {
+          raw:
+            line,
+
+          name,
+
+          artist,
+
+          query:
+            `${name} ${artist}`
+        };
+      }
+    }
+  }
+
+
+  return {
+    raw:
+      line,
+
+    name:
+      line,
+
+    artist:
+      '',
+
+    query:
+      line
+  };
+}
+
+
+function scorePublicCandidate(
+  candidate,
+  request
+) {
+  const wantedTrack =
+    normalizePublicSearch(
+      request.name
+    );
+
+
+  const wantedArtist =
+    normalizePublicSearch(
+      request.artist
+    );
+
+
+  const track =
+    normalizePublicSearch(
+      candidate.trackName
+    );
+
+
+  const artist =
+    normalizePublicSearch(
+      candidate.artistName
+    );
+
+
+  let score =
+    0;
+
+
+  if (
+    track ===
+    wantedTrack
+  ) {
+    score +=
+      120;
+  } else if (
+    track.includes(
+      wantedTrack
+    ) ||
+    wantedTrack.includes(
+      track
+    )
+  ) {
+    score +=
+      55;
+  }
+
+
+  if (
+    wantedArtist
+  ) {
+    if (
+      artist ===
+      wantedArtist
+    ) {
+      score +=
+        100;
+
+    } else if (
+      artist.includes(
+        wantedArtist
+      ) ||
+      wantedArtist.includes(
+        artist
+      )
+    ) {
+      score +=
+        45;
+    }
+  }
+
+
+  if (
+    candidate.previewUrl
+  ) {
+    score +=
+      25;
+  }
+
+
+  return score;
+}
+
+
+function upgradeArtwork(
+  url
+) {
+  return String(
+    url ||
+    ''
+  )
+    .replace(
+      /100x100bb/i,
+      '600x600bb'
+    )
+    .replace(
+      /100x100-75/i,
+      '600x600-75'
+    );
+}
+
+
+async function resolvePublicTrack(
+  rawLine
+) {
+  const request =
+    parsePublicTrackLine(
+      rawLine
+    );
+
+
+  if (!request) {
+    return null;
+  }
+
+
+  const cacheKey =
+    normalizePublicSearch(
+      request.raw
+    );
+
+
+  if (
+    publicTrackCache.has(
+      cacheKey
+    )
+  ) {
+    return publicTrackCache.get(
+      cacheKey
+    );
+  }
+
+
+  const url =
+    new URL(
+      ITUNES_SEARCH_ROOT
+    );
+
+
+  url.search =
+    new URLSearchParams({
+      term:
+        request.query,
+
+      country:
+        'BR',
+
+      media:
+        'music',
+
+      entity:
+        'song',
+
+      limit:
+        '8'
+    });
+
+
+  const response =
+    await fetch(
+      url,
+      {
+        signal:
+          AbortSignal.timeout(
+            10000
+          ),
+
+        headers: {
+          'User-Agent':
+            'Guessify-Public/1.0'
+        }
+      }
+    );
+
+
+  if (
+    !response.ok
+  ) {
+    throw new Error(
+      `Catálogo público respondeu ${
+        response.status
+      }`
+    );
+  }
+
+
+  const data =
+    await response.json();
+
+
+  const candidates =
+    (
+      data.results ||
+      []
+    )
+      .filter(
+        item =>
+          item?.kind ===
+            'song' &&
+          item.previewUrl &&
+          item.trackName &&
+          item.artistName
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          scorePublicCandidate(
+            b,
+            request
+          ) -
+          scorePublicCandidate(
+            a,
+            request
+          )
+      );
+
+
+  const best =
+    candidates[0];
+
+
+  if (!best) {
+    publicTrackCache.set(
+      cacheKey,
+      null
+    );
+
+
+    return null;
+  }
+
+
+  const trackName =
+    cleanName(
+      best.trackName
+    );
+
+
+  const artistName =
+    cleanName(
+      best.artistName
+    );
+
+
+  const trackId =
+    String(
+      best.trackId ||
+      stableKey(
+        artistName,
+        trackName
+      )
+    );
+
+
+  const resolved = {
+    id:
+      `public-${trackId}`,
+
+    type:
+      'track',
+
+    name:
+      trackName,
+
+    artists: [
+      {
+        name:
+          artistName
+      }
+    ],
+
+    album: {
+      name:
+        cleanName(
+          best.collectionName
+        ),
+
+      images: [
+        {
+          url:
+            upgradeArtwork(
+              best.artworkUrl100 ||
+              best.artworkUrl60
+            )
+        }
+      ]
+        .filter(
+          image =>
+            image.url
+        )
+    },
+
+    uri:
+      `public:${trackId}`,
+
+    preview_url:
+      best.previewUrl,
+
+    /*
+      As prévias costumam ter ~30 s.
+      O jogo sorteia o trecho dentro
+      desta prévia, não na música inteira.
+    */
+
+    preview_duration_ms:
+      30000,
+
+    duration_ms:
+      30000,
+
+    full_duration_ms:
+      Number(
+        best.trackTimeMillis ||
+        0
+      ),
+
+    external_urls: {
+      spotify:
+        `https://open.spotify.com/search/${
+          encodeURIComponent(
+            `${trackName} ${artistName}`
+          )
+        }`,
+
+      source:
+        best.trackViewUrl ||
+        best.collectionViewUrl ||
+        ''
+    },
+
+    public_source:
+      'preview'
+  };
+
+
+  publicTrackCache.set(
+    cacheKey,
+    resolved
+  );
+
+
+  return resolved;
+}
+
+
+async function resolvePublicPlaylist(
+  lines
+) {
+  const cleanLines =
+    [
+      ...new Set(
+        (
+          Array.isArray(
+            lines
+          )
+            ? lines
+            : String(
+                lines ||
+                ''
+              ).split(
+                /\r?\n/
+              )
+        )
+          .map(
+            value =>
+              cleanName(
+                value
+              )
+          )
+          .filter(Boolean)
+      )
+    ].slice(
+      0,
+      40
+    );
+
+
+  if (
+    cleanLines.length <
+    2
+  ) {
+    throw new Error(
+      'Envie pelo menos 2 músicas.'
+    );
+  }
+
+
+  const resolved =
+    await mapWithConcurrency(
+      cleanLines,
+      4,
+
+      async line => {
+        try {
+          return {
+            line,
+
+            track:
+              await resolvePublicTrack(
+                line
+              )
+          };
+
+        } catch (error) {
+          console.warn(
+            '[Public] Não consegui resolver:',
+            line,
+            error.message
+          );
+
+
+          return {
+            line,
+
+            track:
+              null
+          };
+        }
+      }
+    );
+
+
+  const seen =
+    new Set();
+
+
+  const tracks =
+    [];
+
+
+  const unmatched =
+    [];
+
+
+  for (
+    const item
+    of resolved
+  ) {
+    if (
+      !item.track
+    ) {
+      unmatched.push(
+        item.line
+      );
+
+      continue;
+    }
+
+
+    if (
+      seen.has(
+        item.track.id
+      )
+    ) {
+      continue;
+    }
+
+
+    seen.add(
+      item.track.id
+    );
+
+
+    tracks.push(
+      item.track
+    );
+  }
+
+
+  return {
+    tracks,
+
+    unmatched,
+
+    requested:
+      cleanLines.length,
+
+    resolved:
+      tracks.length
+  };
+}
+
+
+/* =========================================================
    PERFIS
 ========================================================= */
 
@@ -1160,7 +1780,7 @@ async function upsertProfile(
 
   if (!spotifyId) {
     throw new Error(
-      'Spotify ID ausente.'
+      'Identificador do usuário ausente.'
     );
   }
 
@@ -4582,9 +5202,43 @@ async function handleApi(
 
           supabaseOk,
 
+          publicMode:
+            true,
+
           version:
-            '2.0-supabase'
+            '2.1-public'
         }
+      );
+    }
+
+
+    /* MODO PÚBLICO — LISTA DE MÚSICAS */
+
+    if (
+      url.pathname ===
+        '/api/public/resolve-tracks' &&
+
+      req.method ===
+        'POST'
+    ) {
+      const body =
+        await readBody(
+          req
+        );
+
+
+      const result =
+        await resolvePublicPlaylist(
+          body.lines ||
+          body.text ||
+          []
+        );
+
+
+      return sendJson(
+        res,
+        200,
+        result
       );
     }
 

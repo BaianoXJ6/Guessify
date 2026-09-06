@@ -12,7 +12,6 @@ const RANDOM_SNIPPET_END_PADDING_MS = 10000;
 const REQUIRED_SCOPES = [
   'streaming',
   'user-read-private',
-  'user-read-email',
   'user-read-playback-state',
   'user-modify-playback-state',
   'user-library-read',
@@ -37,10 +36,19 @@ const els = {
   navCapsule: $('#navCapsule'),
   navRanking: $('#navRanking'),
 
+  publicPlay: $('#publicPlayButton'),
   connect: $('#connectButton'),
   demo: $('#demoButton'),
   logout: $('#logoutButton'),
   brand: $('#brandButton'),
+
+  publicImportCard: $('#publicImportCard'),
+  publicPlaylistName: $('#publicPlaylistName'),
+  publicSpotifyUrl: $('#publicSpotifyUrl'),
+  publicPlaylistText: $('#publicPlaylistText'),
+  publicImport: $('#publicImportButton'),
+  publicImportStatus: $('#publicImportStatus'),
+  spotifySources: $('#spotifySources'),
 
   userChip: $('#userChip'),
   playlistGrid: $('#playlistGrid'),
@@ -192,6 +200,10 @@ const state = {
 
   clipStartMs: 0,
 
+  publicUserId: null,
+  publicAudio: null,
+  publicImportLoading: false,
+
   lastfmUser: null,
 
   capsulePollTimer: null,
@@ -224,6 +236,15 @@ async function init() {
   els.roundTotal.textContent =
     cfg.roundsPerGame || 10;
 
+  state.publicUserId =
+    getOrCreatePublicUserId();
+
+  state.publicAudio =
+    new Audio();
+
+  state.publicAudio.preload =
+    'auto';
+
   bindEvents();
 
 
@@ -246,22 +267,27 @@ async function init() {
 
       await bootstrapSpotify();
 
-      await restoreLastfmProfile();
-
-      showView('setup');
-
     } catch (err) {
       console.error(err);
 
       toast(
-        'Sua sessão expirou. Conecte o Spotify novamente.',
+        'O Spotify Beta não conseguiu restaurar a sessão. O modo público continua disponível.',
         true
       );
 
       clearTokens();
-
-      showView('landing');
     }
+  }
+
+
+  await restoreLastfmProfile();
+
+
+  if (
+    state.accessToken &&
+    state.profile
+  ) {
+    showView('setup');
 
   } else {
     showView('landing');
@@ -270,6 +296,18 @@ async function init() {
 
 
 function bindEvents() {
+  els.publicPlay.addEventListener(
+    'click',
+    () => showView('setup')
+  );
+
+
+  els.publicImport.addEventListener(
+    'click',
+    importPublicPlaylist
+  );
+
+
   els.connect.addEventListener(
     'click',
     loginSpotify
@@ -345,12 +383,7 @@ function bindEvents() {
 
   els.brand.addEventListener(
     'click',
-    () =>
-      showView(
-        state.accessToken
-          ? 'setup'
-          : 'landing'
-      )
+    () => showView('landing')
   );
 
 
@@ -484,12 +517,32 @@ function showView(name) {
     );
 
 
+  /*
+    Navegação agora também funciona
+    no modo público.
+  */
+
   els.mainNav
     .classList
+    .remove('hidden');
+
+
+  els.spotifySources
+    ?.classList
     .toggle(
       'hidden',
       !logged
     );
+
+
+  els.userChip.textContent =
+    logged
+      ? `♪ ${
+          state.profile
+            ?.display_name ||
+          'Spotify Beta'
+        }`
+      : '🌐 Modo público';
 
 
   els.navPlay
@@ -534,6 +587,94 @@ function hasValidConfig() {
       .includes('COLE_') &&
     cfg.redirectUri
   );
+}
+
+
+function getOrCreatePublicUserId() {
+  const storageKey =
+    'guessify_public_user_id';
+
+
+  let value =
+    localStorage.getItem(
+      storageKey
+    );
+
+
+  if (value) {
+    return value;
+  }
+
+
+  const id =
+    typeof crypto.randomUUID ===
+      'function'
+      ? crypto.randomUUID()
+      : randomString(32);
+
+
+  value =
+    `public-${id}`;
+
+
+  localStorage.setItem(
+    storageKey,
+    value
+  );
+
+
+  return value;
+}
+
+
+function getProfileKey() {
+  return (
+    state.profile?.id ||
+    state.publicUserId ||
+    getOrCreatePublicUserId()
+  );
+}
+
+
+function getProfileDisplayName() {
+  return (
+    state.profile
+      ?.display_name ||
+    state.lastfmUser ||
+    'Usuário Guessify'
+  );
+}
+
+
+function setPublicImportStatus(
+  text,
+  kind = ''
+) {
+  if (
+    !els.publicImportStatus
+  ) {
+    return;
+  }
+
+
+  els.publicImportStatus.textContent =
+    text;
+
+
+  els.publicImportStatus
+    .classList
+    .toggle(
+      'success',
+      kind === 'success'
+    );
+
+
+  els.publicImportStatus
+    .classList
+    .toggle(
+      'error',
+      kind === 'error'
+    );
 }
 
 
@@ -1243,6 +1384,223 @@ async function loadSource(source) {
 }
 
 
+function parsePublicLines(
+  raw
+) {
+  const lines =
+    String(
+      raw ||
+      ''
+    )
+      .split(/\r?\n/)
+      .map(
+        line =>
+          line
+            .replace(
+              /^\s*\d+[\s.)-]+/,
+              ''
+            )
+            .trim()
+      )
+      .filter(Boolean);
+
+
+  return [
+    ...new Set(
+      lines
+    )
+  ].slice(
+    0,
+    40
+  );
+}
+
+
+async function importPublicPlaylist() {
+  if (
+    state.publicImportLoading
+  ) {
+    return;
+  }
+
+
+  const lines =
+    parsePublicLines(
+      els.publicPlaylistText.value
+    );
+
+
+  if (
+    lines.length <
+    2
+  ) {
+    setPublicImportStatus(
+      'Cole pelo menos 2 músicas, uma por linha.',
+      'error'
+    );
+
+    toast(
+      'Cole pelo menos 2 músicas para montar a partida.',
+      true
+    );
+
+    return;
+  }
+
+
+  state.publicImportLoading =
+    true;
+
+
+  els.publicImport.disabled =
+    true;
+
+
+  const original =
+    els.publicImport.textContent;
+
+
+  els.publicImport.textContent =
+    'PROCURANDO PRÉVIAS...';
+
+
+  setPublicImportStatus(
+    `Procurando prévias para ${lines.length} música(s)...`
+  );
+
+
+  try {
+    const data =
+      await apiFetch(
+        '/api/public/resolve-tracks',
+        {
+          method:
+            'POST',
+
+          body:
+            JSON.stringify({
+              lines,
+
+              spotifyUrl:
+                els.publicSpotifyUrl
+                  .value
+                  .trim()
+            })
+        }
+      );
+
+
+    const tracks =
+      (
+        data.tracks ||
+        []
+      ).filter(
+        track =>
+          validPublicTrack(
+            track
+          )
+      );
+
+
+    if (
+      tracks.length <
+      2
+    ) {
+      throw new Error(
+        'Não encontrei prévias suficientes. Tente usar “Música | Artista” em cada linha.'
+      );
+    }
+
+
+    const playlistName =
+      els.publicPlaylistName
+        .value
+        .trim() ||
+      'Minha Playlist';
+
+
+    setPublicImportStatus(
+      `${tracks.length} músicas prontas${
+        data.unmatched?.length
+          ? ` · ${data.unmatched.length} não encontradas`
+          : ''
+      }`,
+      'success'
+    );
+
+
+    toast(
+      `${tracks.length} músicas prontas. Boa partida!`
+    );
+
+
+    startGame(
+      {
+        type:
+          'public',
+
+        name:
+          playlistName,
+
+        spotifyUrl:
+          els.publicSpotifyUrl
+            .value
+            .trim() ||
+          ''
+      },
+
+      tracks
+    );
+
+  } catch (err) {
+    console.error(
+      '[Guessify] Importação pública:',
+      err
+    );
+
+
+    setPublicImportStatus(
+      err.message ||
+      'Não consegui montar essa playlist.',
+      'error'
+    );
+
+
+    toast(
+      err.message ||
+      'Não consegui montar essa playlist.',
+      true
+    );
+
+  } finally {
+    state.publicImportLoading =
+      false;
+
+
+    els.publicImport.disabled =
+      false;
+
+
+    els.publicImport.textContent =
+      original;
+  }
+}
+
+
+function validPublicTrack(
+  track
+) {
+  return (
+    track &&
+    track.type ===
+      'track' &&
+    track.preview_url &&
+    track.name &&
+    track.artists?.length
+  );
+}
+
+
 function validTrack(track) {
   return (
     track &&
@@ -1273,20 +1631,33 @@ function startGame(
 
 
   els.answerScope.textContent =
-    source.type ===
-      'playlist'
+    (
+      source.type ===
+        'playlist' ||
+      source.type ===
+        'public'
+    )
       ? 'SÓ DESTA PLAYLIST'
       : 'SÓ DESTA SELEÇÃO';
 
 
   els.answer.placeholder =
-    source.type ===
-      'playlist'
+    (
+      source.type ===
+        'playlist' ||
+      source.type ===
+        'public'
+    )
       ? 'Digite uma música desta playlist...'
       : 'Digite música ou artista...';
 
 
-  warmSpotifyPlayback();
+  if (
+    source.type !==
+      'public'
+  ) {
+    warmSpotifyPlayback();
+  }
 
 
   state.queue =
@@ -2456,6 +2827,15 @@ async function playClip() {
   }
 
 
+  if (
+    state.source?.type ===
+      'public'
+  ) {
+    await playPublicClip();
+    return;
+  }
+
+
   try {
     if (
       !state.player &&
@@ -2618,6 +2998,244 @@ async function playClip() {
 }
 
 
+async function playPublicClip() {
+  const previewUrl =
+    state.current
+      ?.preview_url;
+
+
+  if (!previewUrl) {
+    toast(
+      'Essa música ficou sem prévia disponível.',
+      true
+    );
+
+    return;
+  }
+
+
+  try {
+    await stopPlayback();
+
+
+    const audio =
+      state.publicAudio ||
+      new Audio();
+
+
+    state.publicAudio =
+      audio;
+
+
+    if (
+      audio.src !==
+      previewUrl
+    ) {
+      audio.src =
+        previewUrl;
+
+      audio.preload =
+        'auto';
+    }
+
+
+    const previewDurationMs =
+      Number(
+        state.current
+          ?.preview_duration_ms ||
+        30000
+      );
+
+
+    const safeMax =
+      Math.max(
+        0,
+
+        previewDurationMs -
+        (
+          Math.max(
+            ...CLIP_STAGES
+          ) *
+          1000
+        ) -
+        250
+      );
+
+
+    const seekMs =
+      Math.min(
+        Math.max(
+          0,
+          Number(
+            state.clipStartMs ||
+            0
+          )
+        ),
+        safeMax
+      );
+
+
+    const seekSeconds =
+      seekMs /
+      1000;
+
+
+    if (
+      audio.readyState <
+      1
+    ) {
+      await new Promise(
+        (
+          resolve,
+          reject
+        ) => {
+          const done =
+            () => {
+              cleanup();
+              resolve();
+            };
+
+
+          const fail =
+            () => {
+              cleanup();
+              reject(
+                new Error(
+                  'A prévia não carregou.'
+                )
+              );
+            };
+
+
+          const cleanup =
+            () => {
+              audio.removeEventListener(
+                'loadedmetadata',
+                done
+              );
+
+              audio.removeEventListener(
+                'error',
+                fail
+              );
+            };
+
+
+          audio.addEventListener(
+            'loadedmetadata',
+            done,
+            {
+              once:
+                true
+            }
+          );
+
+
+          audio.addEventListener(
+            'error',
+            fail,
+            {
+              once:
+                true
+            }
+          );
+
+
+          audio.load();
+        }
+      );
+    }
+
+
+    audio.currentTime =
+      Math.min(
+        seekSeconds,
+        Math.max(
+          0,
+          (
+            Number(
+              audio.duration ||
+              30
+            ) -
+            Math.max(
+              ...CLIP_STAGES
+            ) -
+            0.25
+          )
+        )
+      );
+
+
+    audio.volume =
+      0.82;
+
+
+    await audio.play();
+
+
+    state.playing =
+      true;
+
+
+    state.playbackDeviceId =
+      null;
+
+
+    state.currentTargetKind =
+      'public';
+
+
+    state.currentTargetName =
+      'Prévia pública';
+
+
+    state.clipStartedAt =
+      performance.now();
+
+
+    setPlayIcon(
+      true
+    );
+
+
+    startProgressTicker();
+
+
+    state.playTimer =
+      setTimeout(
+        () =>
+          stopPlayback(),
+
+        CLIP_STAGES[
+          state.stage
+        ] *
+        1000
+      );
+
+  } catch (err) {
+    state.playing =
+      false;
+
+
+    setPlayIcon(
+      false
+    );
+
+
+    console.error(
+      '[Guessify] Prévia pública:',
+      err
+    );
+
+
+    toast(
+      'Não consegui tocar essa prévia. Tente novamente ou use outra música.',
+      true
+    );
+  }
+}
+
+
 function animateFakeClip() {
   stopPlayback();
 
@@ -2736,6 +3354,16 @@ async function stopPlayback() {
     null;
 
 
+  if (
+    state.publicAudio &&
+    !state.publicAudio.paused
+  ) {
+    try {
+      state.publicAudio.pause();
+    } catch {}
+  }
+
+
   const shouldPause =
     state.playing &&
     !state.demo &&
@@ -2795,7 +3423,12 @@ function chooseClipStartMs(
 
   const duration =
     Number(
-      track?.duration_ms ||
+      (
+        state.source?.type ===
+          'public'
+          ? track?.preview_duration_ms
+          : track?.duration_ms
+      ) ||
       0
     );
 
@@ -2805,6 +3438,43 @@ function chooseClipStartMs(
       ...CLIP_STAGES
     ) *
     1000;
+
+
+  /*
+    No modo público trabalhamos com
+    uma prévia curta (~30 s), então
+    sorteamos dentro dela sem aplicar
+    as margens usadas em faixas inteiras.
+  */
+
+  if (
+    state.source?.type ===
+      'public'
+  ) {
+    const lower =
+      1500;
+
+
+    const upper =
+      Math.max(
+        lower,
+
+        duration -
+        maxClipMs -
+        1200
+      );
+
+
+    return Math.floor(
+      lower +
+      Math.random() *
+      Math.max(
+        1,
+        upper -
+        lower
+      )
+    );
+  }
 
 
   if (
@@ -3885,9 +4555,11 @@ async function apiFetch(
 ========================================================= */
 
 async function restoreLastfmProfile() {
-  if (
-    !state.profile?.id
-  ) {
+  const profileKey =
+    getProfileKey();
+
+
+  if (!profileKey) {
     return;
   }
 
@@ -3899,7 +4571,7 @@ async function restoreLastfmProfile() {
       await apiFetch(
         `/api/profile?spotifyId=${
           encodeURIComponent(
-            state.profile.id
+            profileKey
           )
         }`
       );
@@ -3908,7 +4580,7 @@ async function restoreLastfmProfile() {
     state.lastfmUser =
       profile?.lastfmUser ||
       localStorage.getItem(
-        `guessify_lastfm_${state.profile.id}`
+        `guessify_lastfm_${profileKey}`
       ) ||
       null;
 
@@ -3921,7 +4593,7 @@ async function restoreLastfmProfile() {
 
     state.lastfmUser =
       localStorage.getItem(
-        `guessify_lastfm_${state.profile.id}`
+        `guessify_lastfm_${profileKey}`
       ) ||
       null;
   }
@@ -3983,19 +4655,6 @@ async function checkLastfmServer() {
 
 
 async function openCapsule() {
-  if (
-    !state.accessToken ||
-    !state.profile
-  ) {
-    toast(
-      'Conecte o Spotify primeiro.',
-      true
-    );
-
-    return;
-  }
-
-
   showView(
     'capsule'
   );
@@ -4068,14 +4727,8 @@ function showCapsuleDashboard() {
 
 
 async function linkLastfmProfile() {
-  if (
-    !state.profile?.id
-  ) {
-    return toast(
-      'Conecte o Spotify primeiro.',
-      true
-    );
-  }
+  const profileKey =
+    getProfileKey();
 
 
   const username =
@@ -4127,12 +4780,20 @@ async function linkLastfmProfile() {
 
           body:
             JSON.stringify({
+              /*
+                O backend mantém o nome spotifyId
+                por compatibilidade com o banco.
+                No modo público usamos um ID local
+                anônimo, sem conta Spotify.
+              */
+
               spotifyId:
-                state.profile.id,
+                profileKey,
 
               displayName:
                 state.profile
-                  .display_name ||
+                  ?.display_name ||
+                username ||
                 'Usuário Guessify',
 
               lastfmUser:
@@ -4148,7 +4809,7 @@ async function linkLastfmProfile() {
 
     localStorage.setItem(
       `guessify_lastfm_${
-        state.profile.id
+        profileKey
       }`,
 
       state.lastfmUser
@@ -4194,9 +4855,11 @@ async function linkLastfmProfile() {
 
 
 async function unlinkLastfmProfile() {
-  if (
-    !state.profile?.id
-  ) {
+  const profileKey =
+    getProfileKey();
+
+
+  if (!profileKey) {
     return;
   }
 
@@ -4211,7 +4874,7 @@ async function unlinkLastfmProfile() {
         body:
           JSON.stringify({
             spotifyId:
-              state.profile.id
+              profileKey
           })
       }
     );
@@ -4223,7 +4886,7 @@ async function unlinkLastfmProfile() {
 
   localStorage.removeItem(
     `guessify_lastfm_${
-      state.profile.id
+      profileKey
     }`
   );
 
@@ -4237,6 +4900,15 @@ async function unlinkLastfmProfile() {
 
   els.lastfmUsername.value =
     '';
+
+
+  state.nowPlayingTrack =
+    null;
+
+
+  renderNowPlaying(
+    null
+  );
 
 
   showCapsuleConnect();
@@ -4650,14 +5322,7 @@ function renderCapsuleArtists(
 ========================================================= */
 
 async function loadNowPlaying() {
-  /*
-    Só roda quando:
-    - Spotify está conectado
-    - usuário está na Cápsula
-  */
-
   if (
-    !state.accessToken ||
     els.capsule
       .classList
       .contains('hidden')
@@ -4665,11 +5330,6 @@ async function loadNowPlaying() {
     return;
   }
 
-
-  /*
-    Impede duas requisições
-    ao mesmo tempo.
-  */
 
   if (
     state.nowPlayingFetchInFlight
@@ -4683,20 +5343,116 @@ async function loadNowPlaying() {
 
 
   try {
-    const data =
-      await spotifyFetch(
-        '/me/player/currently-playing?additional_types=track'
-      );
-
-
     /*
-      Nenhuma música tocando.
+      Com Spotify Beta conectado:
+      usamos a API do Spotify e temos
+      progresso exato.
+
+      Sem Spotify:
+      usamos o "now playing" do Last.fm.
     */
 
     if (
-      !data?.item ||
-      data.item.type !==
-        'track'
+      state.accessToken
+    ) {
+      const data =
+        await spotifyFetch(
+          '/me/player/currently-playing?additional_types=track'
+        );
+
+
+      if (
+        !data?.item ||
+        data.item.type !==
+          'track'
+      ) {
+        state.nowPlayingTrack =
+          null;
+
+
+        renderNowPlaying(
+          null
+        );
+
+
+        return;
+      }
+
+
+      const track = {
+        id:
+          data.item.id ||
+          data.item.uri ||
+          '',
+
+        name:
+          data.item.name ||
+          'Música',
+
+        artist:
+          (
+            data.item.artists ||
+            []
+          )
+            .map(
+              artist =>
+                artist.name
+            )
+            .filter(Boolean)
+            .join(', '),
+
+        album:
+          data.item.album?.name ||
+          '',
+
+        image:
+          data.item
+            .album
+            ?.images
+            ?.[0]
+            ?.url ||
+          '',
+
+        durationMs:
+          Number(
+            data.item.duration_ms ||
+            0
+          ),
+
+        progressMs:
+          Number(
+            data.progress_ms ||
+            0
+          ),
+
+        isPlaying:
+          Boolean(
+            data.is_playing
+          ),
+
+        syncedAt:
+          Date.now(),
+
+        source:
+          'spotify'
+      };
+
+
+      state.nowPlayingTrack =
+        track;
+
+
+      renderNowPlaying(
+        track
+      );
+
+
+      return;
+    }
+
+
+    if (
+      !state.lastfmUser
     ) {
       state.nowPlayingTrack =
         null;
@@ -4711,76 +5467,59 @@ async function loadNowPlaying() {
     }
 
 
-    const track = {
-      id:
-        data.item.id ||
-        data.item.uri ||
-        '',
-
-
-      name:
-        data.item.name ||
-        'Música',
-
-
-      artist:
-        (
-          data.item.artists ||
-          []
-        )
-          .map(
-            artist =>
-              artist.name
+    const {
+      nowPlaying
+    } =
+      await apiFetch(
+        `/api/now-playing?username=${
+          encodeURIComponent(
+            state.lastfmUser
           )
-          .filter(Boolean)
-          .join(', '),
+        }`
+      );
 
 
-      album:
-        data.item.album?.name ||
-        '',
+    const track =
+      nowPlaying
+        ? {
+            id:
+              `${nowPlaying.artist || ''}::${
+                nowPlaying.name ||
+                ''
+              }`,
 
+            name:
+              nowPlaying.name ||
+              'Música',
 
-      image:
-        data.item
-          .album
-          ?.images
-          ?.[0]
-          ?.url ||
-        '',
+            artist:
+              nowPlaying.artist ||
+              '',
 
+            album:
+              nowPlaying.album ||
+              '',
 
-      durationMs:
-        Number(
-          data.item.duration_ms ||
-          0
-        ),
+            image:
+              nowPlaying.image ||
+              '',
 
+            durationMs:
+              0,
 
-      progressMs:
-        Number(
-          data.progress_ms ||
-          0
-        ),
+            progressMs:
+              0,
 
+            isPlaying:
+              true,
 
-      isPlaying:
-        Boolean(
-          data.is_playing
-        ),
+            syncedAt:
+              Date.now(),
 
-
-      /*
-        Guarda a hora em que
-        recebemos progress_ms.
-
-        Assim conseguimos mover
-        a barra localmente depois.
-      */
-
-      syncedAt:
-        Date.now()
-    };
+            source:
+              'lastfm'
+          }
+        : null;
 
 
     state.nowPlayingTrack =
@@ -4792,16 +5531,8 @@ async function loadNowPlaying() {
     );
 
   } catch (err) {
-    /*
-      Se uma consulta falhar,
-      mantém a última música
-      na tela.
-
-      Evita ficar piscando.
-    */
-
     console.warn(
-      '[Guessify] Spotify now playing:',
+      '[Guessify] Tocando agora:',
       err
     );
 
@@ -5062,7 +5793,13 @@ function updateNowPlayingProgressUI() {
     state.nowPlayingTrack;
 
 
-  if (!track) {
+  if (
+    !track ||
+    Number(
+      track.durationMs ||
+      0
+    ) <= 0
+  ) {
     ui.wrap.style.display =
       'none';
 
@@ -5173,7 +5910,11 @@ function renderNowPlaying(
           }`
         )
 
-      : 'Abra o Spotify e dê play';
+      : (
+          state.accessToken
+            ? 'Abra o Spotify e dê play'
+            : 'O Last.fm mostra aqui quando você estiver ouvindo'
+        );
 
 
   els.nowPlayingCover.innerHTML =
@@ -5203,58 +5944,32 @@ function renderNowPlaying(
 ========================================================= */
 
 function startCapsuleTimers() {
-  /*
-    Remove timers antigos primeiro.
-  */
-
   clearLiveTimers();
 
-
-  /*
-    TOCANDO AGORA:
-
-    Busca imediatamente.
-  */
 
   loadNowPlaying();
 
 
-  /*
-    Confere com Spotify
-    a cada 2 segundos.
-
-    Se trocar música,
-    deve aparecer em até
-    aproximadamente 2s.
-  */
-
   state.nowPlayingTimer =
     setInterval(
       loadNowPlaying,
-      2000
+
+      state.accessToken
+        ? 2000
+        : 5000
     );
 
 
-  /*
-    Atualiza visualmente
-    barra/progresso 4x por segundo.
+  if (
+    state.accessToken
+  ) {
+    state.nowPlayingProgressTimer =
+      setInterval(
+        updateNowPlayingProgressUI,
+        250
+      );
+  }
 
-    NÃO chama Spotify aqui.
-  */
-
-  state.nowPlayingProgressTimer =
-    setInterval(
-      updateNowPlayingProgressUI,
-      250
-    );
-
-
-  /*
-    Cápsula Last.fm:
-
-    procura novos scrobbles
-    a cada 20 segundos.
-  */
 
   state.capsulePollTimer =
     setInterval(
@@ -5273,19 +5988,6 @@ function startCapsuleTimers() {
 ========================================================= */
 
 async function openRanking() {
-  if (
-    !state.accessToken ||
-    !state.profile
-  ) {
-    toast(
-      'Conecte o Spotify primeiro.',
-      true
-    );
-
-    return;
-  }
-
-
   showView(
     'ranking'
   );
@@ -5444,7 +6146,7 @@ function renderRanking(
           const me =
             row.spotifyId &&
             row.spotifyId ===
-              state.profile?.id;
+              getProfileKey();
 
 
           const medal =

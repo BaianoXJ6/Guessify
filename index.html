@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0a0a0b" />
-  <title>Guessify — Jogo + Cápsula Sonora</title>
-  <meta name="description" content="Jogo de adivinhar músicas com Spotify e Cápsula Sonora mensal via Last.fm." />
+  <title>Guessify — Jogo musical + Cápsula Sonora</title>
+  <meta name="description" content="Guessify: modo público com prévias musicais, Spotify Beta e Cápsula Sonora mensal via Last.fm." />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -41,13 +41,22 @@
         <h1>Você conhece mesmo<br><span>suas músicas?</span></h1>
         <p>Ouça alguns segundos. Arrisque o nome. Descubra se seu ouvido merece o hype.</p>
         <div class="hero-actions">
-          <button id="connectButton" class="primary-button spotify-button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.58 14.42a.62.62 0 0 1-.86.2c-2.36-1.44-5.33-1.77-8.82-.97a.625.625 0 1 1-.28-1.22c3.82-.87 7.1-.5 9.76 1.12.3.18.39.57.2.87Zm1.23-2.73a.78.78 0 0 1-1.08.26c-2.7-1.66-6.82-2.14-10.02-1.17a.78.78 0 1 1-.45-1.5c3.66-1.1 8.2-.57 11.3 1.33.37.23.48.7.25 1.08Zm.1-2.84C14.67 8.93 9.33 8.75 6.24 9.7a.94.94 0 1 1-.55-1.8c3.55-1.08 9.46-.87 13.17 1.33a.94.94 0 0 1-.96 1.62Z"/></svg>
-            Conectar Spotify
+          <button id="publicPlayButton" class="primary-button public-button">
+            <span aria-hidden="true">🌐</span>
+            Jogar sem login
           </button>
+
+          <button id="connectButton" class="secondary-button spotify-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.58 14.42a.62.62 0 0 1-.86.2c-2.36-1.44-5.33-1.77-8.82-.97a.625.625 0 1 1-.28-1.22c3.82-.87 7.1-.5 9.76 1.12.3.18.39.57.2.87Zm1.23-2.73a.78.78 0 0 1-1.08.26c-2.7-1.66-6.82-2.14-10.02-1.17a.78.78 0 1 1-.45-1.5c3.66-1.1 8.2-.57 11.3 1.33.37.23.48.7.25 1.08Zm.1-2.84C14.67 8.93 9.33 8.75 6.24 9.7a.94.94 0 1 1-.55-1.8c3.55-1.08 9.46-.87 13.17 1.33a.94.94 0 0 1-.96 1.62Z"/></svg>
+            Spotify Beta
+          </button>
+
           <button id="demoButton" class="secondary-button">Ver interface</button>
         </div>
-        <p class="fine-print">Para tocar músicas pelo navegador, a integração do Spotify exige Premium.</p>
+
+        <p class="fine-print">
+          Modo público não exige conta Spotify. A Cápsula usa Last.fm. O Spotify Beta continua disponível para as contas autorizadas no app.
+        </p>
       </div>
 
       <div class="hero-card-wrap">
@@ -73,26 +82,73 @@
           <div class="eyebrow">ESCOLHA O DESAFIO</div>
           <h2>De onde vêm as músicas?</h2>
         </div>
-        <div id="userChip" class="user-chip"></div>
+        <div id="userChip" class="user-chip">🌐 Modo público</div>
       </div>
 
-      <div class="source-grid">
-        <button id="likedSongsButton" class="source-card featured-source">
-          <div class="source-icon">♥</div>
-          <div>
-            <span class="source-kicker">BIBLIOTECA</span>
-            <h3>Músicas Curtidas</h3>
-            <p>Um mix aleatório do que você salvou.</p>
+      <section id="publicImportCard" class="public-import-card">
+        <div class="public-import-copy">
+          <span class="source-kicker">MODO PÚBLICO</span>
+          <h3>Monte o jogo com a sua playlist</h3>
+          <p>
+            Cole uma lista de músicas. Use uma música por linha, de preferência no formato
+            <strong>Música | Artista</strong>. O Guessify procura uma prévia reproduzível para montar a partida.
+          </p>
+        </div>
+
+        <div class="public-import-form">
+          <label>
+            <span>Nome da playlist</span>
+            <input id="publicPlaylistName" autocomplete="off" maxlength="80" placeholder="Ex.: Minha playlist" />
+          </label>
+
+          <label>
+            <span>Link do Spotify <small>(opcional, só para referência)</small></span>
+            <input id="publicSpotifyUrl" autocomplete="off" inputmode="url" placeholder="https://open.spotify.com/playlist/..." />
+          </label>
+
+          <label>
+            <span>Músicas da playlist</span>
+            <textarea id="publicPlaylistText" rows="9" spellcheck="false" placeholder="Amanhecer | BK'&#10;Blinding Lights | The Weeknd&#10;Die With A Smile | Lady Gaga, Bruno Mars"></textarea>
+          </label>
+
+          <div class="public-import-actions">
+            <button id="publicImportButton" class="primary-button">MONTAR PARTIDA</button>
+            <span id="publicImportStatus" class="public-import-status">Sem login · até 40 linhas por importação</span>
           </div>
-          <span class="source-arrow">→</span>
-        </button>
-      </div>
 
-      <div class="playlist-heading">
-        <h3>Suas playlists</h3>
-        <span id="playlistStatus">Carregando...</span>
+          <p class="public-import-note">
+            O link do Spotify sozinho não libera a lista de faixas para este app sem autorização.
+            Por isso, no modo público, a lista é colada aqui. Para carregar as playlists automaticamente,
+            use o Spotify Beta abaixo.
+          </p>
+        </div>
+      </section>
+
+      <div id="spotifySources" class="spotify-sources hidden">
+        <div class="beta-divider">
+          <span>SPOTIFY BETA</span>
+          <p>Para contas autorizadas no Spotify Developer Dashboard.</p>
+        </div>
+
+        <div class="source-grid">
+          <button id="likedSongsButton" class="source-card featured-source">
+            <div class="source-icon">♥</div>
+            <div>
+              <span class="source-kicker">BIBLIOTECA</span>
+              <h3>Músicas Curtidas</h3>
+              <p>Um mix aleatório do que você salvou.</p>
+            </div>
+            <span class="source-arrow">→</span>
+          </button>
+        </div>
+
+        <div class="playlist-heading">
+          <h3>Suas playlists do Spotify</h3>
+          <span id="playlistStatus">Carregando...</span>
+        </div>
+
+        <div id="playlistGrid" class="playlist-grid"></div>
       </div>
-      <div id="playlistGrid" class="playlist-grid"></div>
     </section>
 
 
@@ -101,7 +157,7 @@
         <div>
           <div class="eyebrow"><span class="pulse-dot"></span> ATUALIZA QUASE EM TEMPO REAL</div>
           <h2>Cápsula Sonora</h2>
-          <p class="section-subtitle">Seu mês musical acompanhado pelo Last.fm enquanto você escuta Spotify normalmente.</p>
+          <p class="section-subtitle">Seu mês musical acompanhado pelo Last.fm. Não precisa conectar o Spotify ao Guessify para usar a Cápsula.</p>
         </div>
         <button id="capsuleRefresh" class="secondary-button compact-button hidden">Atualizar agora</button>
       </div>
@@ -111,14 +167,14 @@
         <div class="capsule-connect-copy">
           <span class="source-kicker">CONFIGURAÇÃO ÚNICA</span>
           <h3>Conecte seu histórico do Last.fm</h3>
-          <p>Primeiro conecte Spotify ao Last.fm. Depois digite seu usuário do Last.fm aqui. A partir daí o Guessify consegue ler seus scrobbles mesmo quando este site está fechado.</p>
+          <p>Digite seu usuário do Last.fm. A Cápsula usa seus scrobbles para calcular o mês musical, mesmo quando o Guessify estiver fechado. Se você ouve pelo Spotify, a ligação Spotify → Last.fm é feita no próprio Last.fm.</p>
           <div class="capsule-connect-actions">
             <div class="lastfm-input-wrap">
               <span>@</span><input id="lastfmUsername" autocomplete="off" placeholder="seu_usuario_lastfm" />
             </div>
             <button id="linkLastfmButton" class="primary-button">CONECTAR LAST.FM</button>
           </div>
-          <a class="helper-link" href="https://www.last.fm/pt/about/trackmymusic?lang=pt" target="_blank" rel="noreferrer">Ainda não conectou Spotify ao Last.fm? Fazer isso agora ↗</a>
+          <a class="helper-link" href="https://www.last.fm/pt/about/trackmymusic?lang=pt" target="_blank" rel="noreferrer">Ouve pelo Spotify? Conectar Spotify ao Last.fm ↗</a>
           <p id="lastfmConfigHint" class="config-hint hidden"></p>
         </div>
       </section>
@@ -141,7 +197,7 @@
           <div class="now-playing-copy">
             <span>TOCANDO AGORA</span>
             <strong id="nowPlayingTitle">Nada tocando agora</strong>
-            <small id="nowPlayingArtist">Abra o Spotify e dê play</small>
+            <small id="nowPlayingArtist">O Last.fm mostra aqui quando você estiver ouvindo</small>
           </div>
           <div class="live-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         </div>
@@ -149,9 +205,9 @@
         <div class="capsule-hero-grid">
           <article class="capsule-main-stat">
             <span id="capsuleMonthLabel">ESTE MÊS</span>
-            <strong><em>≈</em><span id="capsuleMinutes">0</span></strong>
-            <h3>minutos estimados</h3>
-            <p>Calculados a partir dos scrobbles e da duração das faixas.</p>
+            <strong><span id="capsuleMinutes">0</span></strong>
+            <h3>minutos contabilizados</h3>
+            <p>Cada scrobble confirmado soma a duração completa da faixa.</p>
           </article>
           <div class="capsule-mini-stats">
             <article><span>🎵</span><strong id="capsuleScrobbles">0</strong><small>músicas registradas</small></article>
@@ -172,7 +228,7 @@
           </section>
         </div>
 
-        <p class="capsule-disclaimer">Os minutos são uma <strong>estimativa</strong> baseada nos scrobbles do Last.fm e nas durações conhecidas das faixas; não são minutos oficiais fornecidos pelo Spotify.</p>
+        <p class="capsule-disclaimer">Os minutos são <strong>contabilizados pela duração completa de cada scrobble confirmado</strong>. Faixas sem duração conhecida ficam fora do total até serem identificadas.</p>
       </div>
     </section>
 
@@ -195,7 +251,7 @@
       <div id="rankingEmpty" class="empty-state hidden">
         <div>🏁</div><h3>Ainda não tem ninguém no ranking.</h3><p>Conecte uma conta Last.fm na Cápsula Sonora para aparecer aqui.</p>
       </div>
-      <p class="capsule-disclaimer">O ranking usa <strong>minutos estimados</strong> a partir dos scrobbles. Em grupos pequenos ele atualiza quase em tempo real quando alguém abre ou atualiza o ranking.</p>
+      <p class="capsule-disclaimer">O ranking usa <strong>minutos contabilizados</strong> a partir dos scrobbles confirmados. Ele pode ser acessado mesmo sem conectar o Spotify.</p>
     </section>
 
     <section id="gameView" class="view game-view hidden">
