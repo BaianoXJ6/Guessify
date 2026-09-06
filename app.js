@@ -170,6 +170,7 @@ const state = {
 
   resolved: false,
   playing: false,
+  playStarting: false,
 
   playTimer: null,
   progressTimer: null,
@@ -2777,6 +2778,9 @@ async function ensurePlayableDevice({
   }
 
 
+  // Para trechos de 0,5 s o Web Playback SDK é muito mais preciso
+  // porque o pause acontece localmente no navegador. Por isso ele tem
+  // prioridade sobre Spotify Desktop/celular.
   if (
     state.deviceId
   ) {
@@ -2800,75 +2804,6 @@ async function ensurePlayableDevice({
   }
 
 
-  if (
-    !forceRefresh &&
-    state.externalDeviceId
-  ) {
-    return {
-      id:
-        state.externalDeviceId,
-
-      kind:
-        'external',
-
-      name:
-        state.externalDeviceName ||
-        'Spotify',
-
-      isActive:
-        true
-    };
-  }
-
-
-  if (
-    !forceRefresh &&
-    state.devicesCache.length
-  ) {
-    const cached =
-      state.devicesCache
-        .find(
-          device =>
-            device.is_active &&
-            !device.is_restricted &&
-            device.id &&
-            device.id !==
-              state.deviceId
-        );
-
-
-    if (cached) {
-      state.externalDeviceId =
-        cached.id;
-
-
-      state.externalDeviceName =
-        cached.name ||
-        'Spotify';
-
-
-      state.playbackDeviceId =
-        cached.id;
-
-
-      return {
-        id:
-          cached.id,
-
-        kind:
-          'external',
-
-        name:
-          cached.name ||
-          'Spotify',
-
-        isActive:
-          true
-      };
-    }
-  }
-
-
   let webErr =
     null;
 
@@ -2881,7 +2816,9 @@ async function ensurePlayableDevice({
     try {
       const id =
         await ensurePlayerReady(
-          1200
+          forceRefresh
+            ? 3500
+            : 2600
         );
 
 
@@ -2907,16 +2844,41 @@ async function ensurePlayableDevice({
         err;
 
 
+      // Só evita insistir por alguns segundos. Antes eram 60 s, o que
+      // fazia o jogo ficar preso no aparelho externo e piorava o timer.
       state.webPlayerUnavailableUntil =
         Date.now() +
-        60000;
+        8000;
 
 
       console.warn(
-        '[Guessify] Web Playback SDK não ficou pronto. Usando fallback por 60s.',
+        '[Guessify] Web Player indisponível; tentando Spotify Connect como fallback.',
         err
       );
     }
+  }
+
+
+  // Fallback: dispositivo externo. Continua existindo para não quebrar
+  // compatibilidade, mas só é usado depois da tentativa do Web Player.
+  if (
+    !forceRefresh &&
+    state.externalDeviceId
+  ) {
+    return {
+      id:
+        state.externalDeviceId,
+
+      kind:
+        'external',
+
+      name:
+        state.externalDeviceName ||
+        'Spotify',
+
+      isActive:
+        true
+    };
   }
 
 
@@ -2988,7 +2950,6 @@ async function ensurePlayableDevice({
     `NO_PLAYABLE_DEVICE | ${reason}`
   );
 }
-
 
 function friendlyPlayerError(
   err
@@ -3121,10 +3082,82 @@ async function playTrackOnTarget(
 }
 
 
+async function waitForWebPlaybackStart(
+  expectedUri,
+  timeoutMs = 3500
+) {
+  if (
+    !state.player ||
+    !expectedUri
+  ) {
+    return null;
+  }
+
+
+  const startedWaitingAt =
+    performance.now();
+
+
+  while (
+    performance.now() -
+      startedWaitingAt <
+    timeoutMs
+  ) {
+    try {
+      const playbackState =
+        await state.player
+          .getCurrentState();
+
+
+      const currentUri =
+        playbackState
+          ?.track_window
+          ?.current_track
+          ?.uri;
+
+
+      if (
+        playbackState &&
+        !playbackState.paused &&
+        currentUri ===
+          expectedUri
+      ) {
+        return performance.now();
+      }
+
+    } catch {}
+
+
+    await sleep(25);
+  }
+
+
+  return null;
+}
+
+
 async function playClip() {
   if (
-    state.resolved ||
+    state.resolved
+  ) {
+    return;
+  }
+
+
+  // Se o trecho já está tocando, o mesmo botão agora funciona como pause.
+  if (
     state.playing
+  ) {
+    await stopPlayback();
+    return;
+  }
+
+
+  // Evita duas chamadas concorrentes no primeiro clique enquanto o Spotify
+  // ainda está acordando/conectando. Essa corrida era uma das causas de a
+  // música começar a tocar sem o timer de 0,5 s estar armado.
+  if (
+    state.playStarting
   ) {
     return;
   }
@@ -3145,6 +3178,10 @@ async function playClip() {
   }
 
 
+  state.playStarting =
+    true;
+
+
   try {
     if (
       !state.player &&
@@ -3157,19 +3194,13 @@ async function playClip() {
     }
 
 
+    // Precisa ser chamado dentro do clique para liberar áudio em navegadores
+    // que bloqueiam autoplay.
     state.player
       ?.activateElement
       ?.();
 
-  } catch (err) {
-    console.warn(
-      '[Guessify] activateElement:',
-      err
-    );
-  }
 
-
-  try {
     const alreadyWarm =
       !!(
         state.deviceId ||
@@ -3189,6 +3220,16 @@ async function playClip() {
 
 
     await stopPlayback();
+
+
+    let detectedStartPromise =
+      target.kind ===
+        'web'
+        ? waitForWebPlaybackStart(
+            state.current?.uri,
+            3500
+          )
+        : null;
 
 
     try {
@@ -3229,7 +3270,7 @@ async function playClip() {
 
         state.webPlayerUnavailableUntil =
           Date.now() +
-          30000;
+          3000;
       }
 
 
@@ -3240,10 +3281,26 @@ async function playClip() {
         });
 
 
+      detectedStartPromise =
+        target.kind ===
+          'web'
+          ? waitForWebPlaybackStart(
+              state.current?.uri,
+              3500
+            )
+          : null;
+
+
       await playTrackOnTarget(
         target
       );
     }
+
+
+    const detectedStart =
+      detectedStartPromise
+        ? await detectedStartPromise
+        : null;
 
 
     state.playing =
@@ -3262,7 +3319,11 @@ async function playClip() {
       target.name;
 
 
+    // No Web Player usamos o instante em que o SDK realmente detectou a
+    // faixa tocando. Assim o 0,5 s conta desde o áudio real, não desde o fim
+    // da requisição HTTP.
     state.clipStartedAt =
+      detectedStart ||
       performance.now();
 
 
@@ -3272,16 +3333,43 @@ async function playClip() {
     startProgressTicker();
 
 
-    state.playTimer =
-      setTimeout(
-        () =>
-          stopPlayback(),
+    const clipDurationMs =
+      CLIP_STAGES[
+        state.stage
+      ] *
+      1000;
 
-        CLIP_STAGES[
-          state.stage
-        ] *
-        1000
+
+    const elapsedSinceAudioStart =
+      Math.max(
+        0,
+        performance.now() -
+          state.clipStartedAt
       );
+
+
+    const remainingMs =
+      Math.max(
+        0,
+        clipDurationMs -
+          elapsedSinceAudioStart
+      );
+
+
+    if (
+      remainingMs <= 5
+    ) {
+      await stopPlayback();
+
+    } else {
+      state.playTimer =
+        setTimeout(
+          () =>
+            stopPlayback(),
+
+          remainingMs
+        );
+    }
 
   } catch (err) {
     state.playing =
@@ -3303,9 +3391,12 @@ async function playClip() {
       ),
       true
     );
+
+  } finally {
+    state.playStarting =
+      false;
   }
 }
-
 
 async function playPublicClip() {
   const previewUrl =
