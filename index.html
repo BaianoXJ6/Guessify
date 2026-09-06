@@ -85,43 +85,43 @@
         <div id="userChip" class="user-chip">🌐 Modo público</div>
       </div>
 
-      <section id="publicImportCard" class="public-import-card">
-        <div class="public-import-copy">
-          <span class="source-kicker">MODO PÚBLICO</span>
-          <h3>Monte o jogo com a sua playlist</h3>
-          <p>
-            Cole uma lista de músicas. Use uma música por linha, de preferência no formato
-            <strong>Música | Artista</strong>. O Guessify procura uma prévia reproduzível para montar a partida.
-          </p>
-        </div>
-
-        <div class="public-import-form">
-          <label>
-            <span>Nome da playlist</span>
-            <input id="publicPlaylistName" autocomplete="off" maxlength="80" placeholder="Ex.: Minha playlist" />
-          </label>
-
-          <label>
-            <span>Link do Spotify <small>(opcional, só para referência)</small></span>
-            <input id="publicSpotifyUrl" autocomplete="off" inputmode="url" placeholder="https://open.spotify.com/playlist/..." />
-          </label>
-
-          <label>
-            <span>Músicas da playlist</span>
-            <textarea id="publicPlaylistText" rows="9" spellcheck="false" placeholder="Amanhecer | BK'&#10;Blinding Lights | The Weeknd&#10;Die With A Smile | Lady Gaga, Bruno Mars"></textarea>
-          </label>
-
-          <div class="public-import-actions">
-            <button id="publicImportButton" class="primary-button">MONTAR PARTIDA</button>
-            <span id="publicImportStatus" class="public-import-status">Sem login · até 40 linhas por importação</span>
+      <section id="publicImportCard" class="playlist-loader-card">
+        <div class="playlist-loader-head">
+          <div class="playlist-loader-icon" aria-hidden="true">♫</div>
+          <div>
+            <span class="source-kicker">SUA PLAYLIST</span>
+            <h3>Jogue com uma playlist inteira</h3>
+            <p>Cole o link uma vez. O Guessify monta a partida com as faixas da playlist — sem digitar música por música.</p>
           </div>
-
-          <p class="public-import-note">
-            O link do Spotify sozinho não libera a lista de faixas para este app sem autorização.
-            Por isso, no modo público, a lista é colada aqui. Para carregar as playlists automaticamente,
-            use o Spotify Beta abaixo.
-          </p>
+          <span id="playlistModeBadge" class="playlist-mode-badge">MODO PÚBLICO</span>
         </div>
+
+        <div class="playlist-link-panel">
+          <label class="playlist-url-label" for="publicSpotifyUrl">LINK DA PLAYLIST DO SPOTIFY</label>
+          <div class="playlist-url-row">
+            <div class="playlist-url-input-wrap">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.58 14.42a.62.62 0 0 1-.86.2c-2.36-1.44-5.33-1.77-8.82-.97a.625.625 0 1 1-.28-1.22c3.82-.87 7.1-.5 9.76 1.12.3.18.39.57.2.87Zm1.23-2.73a.78.78 0 0 1-1.08.26c-2.7-1.66-6.82-2.14-10.02-1.17a.78.78 0 1 1-.45-1.5c3.66-1.1 8.2-.57 11.3 1.33.37.23.48.7.25 1.08Zm.1-2.84C14.67 8.93 9.33 8.75 6.24 9.7a.94.94 0 1 1-.55-1.8c3.55-1.08 9.46-.87 13.17 1.33a.94.94 0 0 1-.96 1.62Z"/></svg>
+              <input id="publicSpotifyUrl" autocomplete="off" inputmode="url" placeholder="https://open.spotify.com/playlist/..." />
+            </div>
+            <button id="publicImportButton" class="primary-button playlist-load-button">CARREGAR PLAYLIST</button>
+          </div>
+          <span id="publicImportStatus" class="public-import-status">Cole o link da playlist para começar.</span>
+        </div>
+
+        <div id="publicPlaylistPreview" class="playlist-preview hidden"></div>
+
+        <div class="playlist-fallback">
+          <div>
+            <strong>Sem Spotify Beta?</strong>
+            <span>No modo público, você pode importar um arquivo CSV ou TXT da playlist de uma vez.</span>
+          </div>
+          <input id="publicPlaylistFile" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+          <button id="publicFileButton" class="secondary-button compact-button" type="button">IMPORTAR ARQUIVO</button>
+        </div>
+
+        <p class="playlist-access-note">
+          Para puxar as faixas diretamente de um link do Spotify, a conta precisa estar autorizada no Spotify Beta deste app. Sem login, use a importação por arquivo — ainda sem cadastrar música por música.
+        </p>
       </section>
 
       <div id="spotifySources" class="spotify-sources hidden">

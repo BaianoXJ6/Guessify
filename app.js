@@ -43,11 +43,13 @@ const els = {
   brand: $('#brandButton'),
 
   publicImportCard: $('#publicImportCard'),
-  publicPlaylistName: $('#publicPlaylistName'),
   publicSpotifyUrl: $('#publicSpotifyUrl'),
-  publicPlaylistText: $('#publicPlaylistText'),
   publicImport: $('#publicImportButton'),
   publicImportStatus: $('#publicImportStatus'),
+  publicPlaylistFile: $('#publicPlaylistFile'),
+  publicFileButton: $('#publicFileButton'),
+  publicPlaylistPreview: $('#publicPlaylistPreview'),
+  playlistModeBadge: $('#playlistModeBadge'),
   spotifySources: $('#spotifySources'),
 
   userChip: $('#userChip'),
@@ -308,6 +310,28 @@ function bindEvents() {
   );
 
 
+  els.publicSpotifyUrl.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Enter') {
+        importPublicPlaylist();
+      }
+    }
+  );
+
+
+  els.publicFileButton.addEventListener(
+    'click',
+    () => els.publicPlaylistFile.click()
+  );
+
+
+  els.publicPlaylistFile.addEventListener(
+    'change',
+    importPublicPlaylistFile
+  );
+
+
   els.connect.addEventListener(
     'click',
     loginSpotify
@@ -543,6 +567,19 @@ function showView(name) {
           'Spotify Beta'
         }`
       : '🌐 Modo público';
+
+
+  if (els.playlistModeBadge) {
+    els.playlistModeBadge.textContent =
+      logged
+        ? 'SPOTIFY BETA CONECTADO'
+        : 'MODO PÚBLICO';
+
+    els.playlistModeBadge.classList.toggle(
+      'spotify-ready',
+      logged
+    );
+  }
 
 
   els.navPlay
@@ -1384,140 +1421,435 @@ async function loadSource(source) {
 }
 
 
-function parsePublicLines(
-  raw
-) {
-  const lines =
-    String(
-      raw ||
-      ''
-    )
-      .split(/\r?\n/)
-      .map(
-        line =>
-          line
-            .replace(
-              /^\s*\d+[\s.)-]+/,
-              ''
-            )
-            .trim()
-      )
-      .filter(Boolean);
+function extractSpotifyPlaylistId(value = '') {
+  const raw = String(value || '').trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  const uriMatch =
+    raw.match(/^spotify:playlist:([A-Za-z0-9]+)$/i);
+
+  if (uriMatch) {
+    return uriMatch[1];
+  }
+
+  try {
+    const url = new URL(raw);
+    const match =
+      url.pathname.match(/\/playlist\/([A-Za-z0-9]+)/i);
+
+    return match?.[1] || null;
+
+  } catch {
+    const match =
+      raw.match(/(?:open\.spotify\.com\/[^\s]*?playlist\/|playlist\/)([A-Za-z0-9]+)/i);
+
+    return match?.[1] || null;
+  }
+}
 
 
-  return [
-    ...new Set(
-      lines
-    )
-  ].slice(
-    0,
-    40
-  );
+function renderImportedPlaylistPreview({
+  name = 'Playlist',
+  image = '',
+  count = 0,
+  label = 'PLAYLIST CARREGADA'
+} = {}) {
+  if (!els.publicPlaylistPreview) {
+    return;
+  }
+
+  els.publicPlaylistPreview.innerHTML = `
+    ${
+      image
+        ? `<img class="playlist-preview-cover" src="${escapeAttr(image)}" alt="">`
+        : '<div class="playlist-preview-cover"></div>'
+    }
+    <div class="playlist-preview-meta">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(name)}</strong>
+    </div>
+    <div class="playlist-preview-count">${formatNumber(count)} músicas</div>
+  `;
+
+  els.publicPlaylistPreview.classList.remove('hidden');
+}
+
+
+async function fetchSpotifyPlaylistTracks(playlistId) {
+  const tracks = [];
+  let offset = 0;
+  const limit = 50;
+
+  while (offset < 500) {
+    const data =
+      await spotifyFetch(
+        `/playlists/${encodeURIComponent(playlistId)}/items?limit=${limit}&offset=${offset}`
+      );
+
+    const batch =
+      (data?.items || [])
+        .map(item => item?.item || item?.track)
+        .filter(validTrack);
+
+    tracks.push(...batch);
+
+    const received =
+      Array.isArray(data?.items)
+        ? data.items.length
+        : 0;
+
+    const total =
+      Number(data?.total || 0);
+
+    if (
+      received < limit ||
+      !data?.next ||
+      tracks.length >= total
+    ) {
+      break;
+    }
+
+    offset += limit;
+  }
+
+  const seen = new Set();
+
+  return tracks.filter(track => {
+    if (!track?.id || seen.has(track.id)) {
+      return false;
+    }
+
+    seen.add(track.id);
+    return true;
+  });
 }
 
 
 async function importPublicPlaylist() {
-  if (
-    state.publicImportLoading
-  ) {
+  if (state.publicImportLoading) {
     return;
   }
 
+  const spotifyUrl =
+    els.publicSpotifyUrl.value.trim();
 
-  const lines =
-    parsePublicLines(
-      els.publicPlaylistText.value
-    );
+  const playlistId =
+    extractSpotifyPlaylistId(spotifyUrl);
 
-
-  if (
-    lines.length <
-    2
-  ) {
+  if (!playlistId) {
     setPublicImportStatus(
-      'Cole pelo menos 2 músicas, uma por linha.',
+      'Cole um link de playlist do Spotify. Link de álbum ou música não serve aqui.',
       'error'
     );
 
     toast(
-      'Cole pelo menos 2 músicas para montar a partida.',
+      'Cole o link de uma playlist do Spotify.',
       true
     );
 
     return;
   }
 
+  if (!state.accessToken) {
+    setPublicImportStatus(
+      'Para ler a playlist direto do link, conecte o Spotify Beta. Sem login, use “Importar arquivo”.',
+      'error'
+    );
 
-  state.publicImportLoading =
-    true;
+    toast(
+      'O Spotify exige autorização para entregar as faixas da playlist. Conecte o Spotify Beta ou importe um arquivo.',
+      true
+    );
 
+    return;
+  }
 
-  els.publicImport.disabled =
-    true;
-
+  state.publicImportLoading = true;
+  els.publicImport.disabled = true;
 
   const original =
     els.publicImport.textContent;
 
-
   els.publicImport.textContent =
-    'PROCURANDO PRÉVIAS...';
-
+    'CARREGANDO...';
 
   setPublicImportStatus(
-    `Procurando prévias para ${lines.length} música(s)...`
+    'Lendo as faixas da sua playlist no Spotify...'
   );
 
+  try {
+    const playlist =
+      await spotifyFetch(
+        `/playlists/${encodeURIComponent(playlistId)}`
+      );
+
+    const tracks =
+      await fetchSpotifyPlaylistTracks(
+        playlistId
+      );
+
+    if (tracks.length < 2) {
+      throw new Error(
+        'Não encontrei músicas suficientes nessa playlist.'
+      );
+    }
+
+    const playlistName =
+      playlist?.name ||
+      'Playlist do Spotify';
+
+    const image =
+      playlist?.images?.[0]?.url ||
+      '';
+
+    renderImportedPlaylistPreview({
+      name: playlistName,
+      image,
+      count: tracks.length,
+      label: 'SPOTIFY · PRONTA PARA JOGAR'
+    });
+
+    setPublicImportStatus(
+      `${tracks.length} músicas carregadas automaticamente.`,
+      'success'
+    );
+
+    toast(
+      `${playlistName}: ${tracks.length} músicas carregadas.`
+    );
+
+    startGame(
+      {
+        type: 'playlist',
+        id: playlistId,
+        name: playlistName,
+        spotifyUrl
+      },
+      tracks
+    );
+
+  } catch (err) {
+    console.error(
+      '[Guessify] Playlist por link:',
+      err
+    );
+
+    const message =
+      /403/.test(String(err?.message || ''))
+        ? 'O Spotify bloqueou essa playlist para este app. No modo atual, ela precisa ser sua ou uma playlist em que você colabora.'
+        : err.message ||
+          'Não consegui carregar essa playlist.';
+
+    setPublicImportStatus(
+      message,
+      'error'
+    );
+
+    toast(
+      message,
+      true
+    );
+
+  } finally {
+    state.publicImportLoading = false;
+    els.publicImport.disabled = false;
+    els.publicImport.textContent = original;
+  }
+}
+
+
+function parseCsvRow(line, delimiter) {
+  const cells = [];
+  let current = '';
+  let quoted = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (quoted && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+
+    if (char === delimiter && !quoted) {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+
+function parsePlaylistFile(text) {
+  const rawLines =
+    String(text || '')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+
+  if (!rawLines.length) {
+    return [];
+  }
+
+  const first = rawLines[0];
+  const delimiter =
+    first.includes('\t')
+      ? '\t'
+      : first.includes(';')
+        ? ';'
+        : ',';
+
+  const header =
+    parseCsvRow(first, delimiter)
+      .map(value => normalize(value));
+
+  const titleIndex =
+    header.findIndex(value =>
+      ['track name', 'track', 'song', 'song name', 'name', 'titulo', 'musica']
+        .includes(value)
+    );
+
+  const artistIndex =
+    header.findIndex(value =>
+      ['artist name s', 'artist names', 'artist name', 'artist', 'artists', 'artista', 'artistas']
+        .includes(value)
+    );
+
+  const hasHeader =
+    titleIndex >= 0;
+
+  const output = [];
+  const rows = hasHeader
+    ? rawLines.slice(1)
+    : rawLines;
+
+  for (const line of rows) {
+    if (hasHeader) {
+      const cells =
+        parseCsvRow(line, delimiter);
+
+      const title =
+        cleanImportCell(cells[titleIndex]);
+
+      const artist =
+        artistIndex >= 0
+          ? cleanImportCell(cells[artistIndex])
+          : '';
+
+      if (title) {
+        output.push(
+          artist
+            ? `${title} | ${artist}`
+            : title
+        );
+      }
+
+      continue;
+    }
+
+    const cleaned =
+      line
+        .replace(/^\s*\d+[\s.)-]+/, '')
+        .trim();
+
+    if (cleaned) {
+      output.push(cleaned);
+    }
+  }
+
+  return [...new Set(output)].slice(0, 80);
+}
+
+
+function cleanImportCell(value = '') {
+  return String(value || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/^"|"$/g, '')
+    .trim();
+}
+
+
+async function importPublicPlaylistFile(event) {
+  const file =
+    event?.target?.files?.[0];
+
+  if (!file || state.publicImportLoading) {
+    return;
+  }
+
+  state.publicImportLoading = true;
+  els.publicFileButton.disabled = true;
+
+  const original =
+    els.publicFileButton.textContent;
+
+  els.publicFileButton.textContent =
+    'IMPORTANDO...';
+
+  setPublicImportStatus(
+    `Lendo ${file.name}...`
+  );
 
   try {
+    const text =
+      await file.text();
+
+    const lines =
+      parsePlaylistFile(text);
+
+    if (lines.length < 2) {
+      throw new Error(
+        'Não encontrei músicas suficientes nesse arquivo.'
+      );
+    }
+
+    setPublicImportStatus(
+      `Procurando prévias para ${lines.length} músicas...`
+    );
+
     const data =
       await apiFetch(
         '/api/public/resolve-tracks',
         {
-          method:
-            'POST',
-
-          body:
-            JSON.stringify({
-              lines,
-
-              spotifyUrl:
-                els.publicSpotifyUrl
-                  .value
-                  .trim()
-            })
+          method: 'POST',
+          body: JSON.stringify({ lines })
         }
       );
 
-
     const tracks =
-      (
-        data.tracks ||
-        []
-      ).filter(
-        track =>
-          validPublicTrack(
-            track
-          )
-      );
+      (data.tracks || [])
+        .filter(validPublicTrack);
 
-
-    if (
-      tracks.length <
-      2
-    ) {
+    if (tracks.length < 2) {
       throw new Error(
-        'Não encontrei prévias suficientes. Tente usar “Música | Artista” em cada linha.'
+        'Não encontrei prévias suficientes para montar a partida.'
       );
     }
 
-
     const playlistName =
-      els.publicPlaylistName
-        .value
+      file.name
+        .replace(/\.(csv|txt)$/i, '')
         .trim() ||
-      'Minha Playlist';
+      'Playlist importada';
 
+    renderImportedPlaylistPreview({
+      name: playlistName,
+      count: tracks.length,
+      label: 'ARQUIVO · PRONTO PARA JOGAR'
+    });
 
     setPublicImportStatus(
       `${tracks.length} músicas prontas${
@@ -1528,61 +1860,38 @@ async function importPublicPlaylist() {
       'success'
     );
 
-
-    toast(
-      `${tracks.length} músicas prontas. Boa partida!`
-    );
-
-
     startGame(
       {
-        type:
-          'public',
-
-        name:
-          playlistName,
-
-        spotifyUrl:
-          els.publicSpotifyUrl
-            .value
-            .trim() ||
-          ''
+        type: 'public',
+        name: playlistName,
+        spotifyUrl: ''
       },
-
       tracks
     );
 
   } catch (err) {
     console.error(
-      '[Guessify] Importação pública:',
+      '[Guessify] Arquivo de playlist:',
       err
     );
 
-
     setPublicImportStatus(
       err.message ||
-      'Não consegui montar essa playlist.',
+      'Não consegui importar esse arquivo.',
       'error'
     );
 
-
     toast(
       err.message ||
-      'Não consegui montar essa playlist.',
+      'Não consegui importar esse arquivo.',
       true
     );
 
   } finally {
-    state.publicImportLoading =
-      false;
-
-
-    els.publicImport.disabled =
-      false;
-
-
-    els.publicImport.textContent =
-      original;
+    state.publicImportLoading = false;
+    els.publicFileButton.disabled = false;
+    els.publicFileButton.textContent = original;
+    els.publicPlaylistFile.value = '';
   }
 }
 

@@ -1439,7 +1439,7 @@ async function resolvePublicPlaylist(
       )
     ].slice(
       0,
-      40
+      80
     );
 
 
